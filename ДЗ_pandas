@@ -1,0 +1,268 @@
+import pandas as pd
+
+example_sample_submission_data = pd.read_csv('data/example_sample_submission.csv', sep=',')
+example_sample_submission_data.head()
+
+example_test_data = pd.read_csv('data/example_test.csv', sep=',')
+example_test_data.head()
+
+lectures_data = pd.read_csv('data/lectures.csv', sep=',')
+lectures_data.head()
+
+questions_data = pd.read_csv('data/questions.csv', sep=',')
+questions_data.head()
+
+#DS
+train_data = pd.read_csv('data/train.csv', sep=',')
+train_data.head()
+
+train_data = pd.read_csv('data/train.csv', sep=',')
+train_data.tail(7)
+
+train_data.shape
+    
+train_data.memory_usage(deep=True)
+
+train_data.info()
+
+#мы видим, что "prior_question_had_explanation" является объектом и занимает много памяти, 
+#в то время как он должен быть логическим.
+#исправим это
+train_data['prior_question_had_explanation'] = train_data['prior_question_had_explanation'].astype('boolean')
+train_data.memory_usage(deep=True)
+
+train_data.head(15) #посмотрим на таблицу
+
+#Content_type_id = False означает, что был задан вопрос. True означает, что пользователь смотрел лекцию.
+print(f'У нас {train_data.user_id.nunique()} уникальных пользователей в train dataset')
+
+print('Часть пропущенных значений для каждого столбца')
+print(train_data.isnull().sum() / len(train_data))
+
+train_data.content_type_id.value_counts()
+
+
+#Content_id — это код взаимодействия с пользователем. По сути, это вопросы, если content_type — вопрос 
+#(question_id: внешний ключ для столбца train/test content_id, когда тип контента — вопрос).
+print(f'У нас {train_data.content_id.nunique()} content ids в нашем train set, из которых {train_data[train_data.content_type_id == False].content_id.nunique()}')
+
+print(f'У нас есть {train_data.task_container_id.nunique()} никальных Пакетов вопросов или лекций.')
+
+
+train_data.user_answer.value_counts()
+
+
+#Кажется, что вопросы подразумевают множественность выбора (ответы 0-3). Как упоминалось в описании данных, 
+#-1 на самом деле означает отсутствие ответа (поскольку взаимодействие было лекцией, а не вопросом).
+print(f'Из {train_data.user_id.nunique()} пользователей в train у нас {train_data[train_data.timestamp == 0].user_id.nunique()} пользователей с нулевой строкой timestamp.')
+
+#timestamp: (int64) время в миллисекундах между этим взаимодействием с пользователем и первым завершением события 
+#от этого пользователя.
+correct = train_data[train_data.answered_correctly != -1].answered_correctly.value_counts(ascending=True)
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+bin_labels_5 = ['Bin_1', 'Bin_2', 'Bin_3', 'Bin_4', 'Bin_5']
+train_data['ts_bin'] = pd.qcut(train_data['timestamp'], q=5, labels=bin_labels_5)
+
+#сделаем функцию, которую также можно использовать для других полей
+def correct(field):
+    correct = train_data[train_data.answered_correctly != -1].groupby([field, 'answered_correctly'], as_index=False).size()
+    correct = correct.pivot(index= field, columns='answered_correctly', values='size')
+    correct['Percent_correct'] = round(correct.iloc[:,1]/(correct.iloc[:,0] + correct.iloc[:,1]),2)
+    correct = correct.sort_values(by = "Percent_correct", ascending = False)
+    correct = correct.iloc[:,2]
+    return(correct)
+
+bins_correct = correct("ts_bin")
+bins_correct = bins_correct.sort_index()
+
+fig = plt.figure(figsize=(12,6))
+plt.bar(bins_correct.index, bins_correct.values)
+for i, v in zip(bins_correct.index, bins_correct.values):
+    plt.text(i, v, v, color='white', fontweight='bold', fontsize=14, va='top', ha='center')
+plt.title("Процент ответов_правильно для 5 ячеек временной метки")
+plt.xticks(rotation=0)
+plt.show()
+
+
+
+correct = train_data[train_data.answered_correctly != -1].answered_correctly.value_counts(ascending=True)
+
+fig = plt.figure(figsize=(12,4))
+correct.plot.barh()
+for i, v in zip(correct.index, correct.values):
+    plt.text(v, i, '{:,}'.format(v), color='white', fontweight='bold', fontsize=14, ha='right', va='center')
+plt.title("Верно отвеченные вопросы")
+plt.xticks(rotation=0)
+plt.show()
+
+
+user_percent = train_data[train_data.answered_correctly != -1].groupby('user_id')['answered_correctly'].agg(Mean='mean', Answers='count')
+print(f'Наибольшее количество вопросов, на которые ответил пользователь - {user_percent.Answers.max()}')
+
+
+user_percent = user_percent.query('Answers <= 1000').sample(n=200, random_state=1)
+
+fig = plt.figure(figsize=(12,6))
+x = user_percent.Answers
+y = user_percent.Mean
+plt.scatter(x, y, marker='o')
+plt.title("Процент правильных ответов по сравнению с количеством вопросов, на которые ответил пользователь")
+plt.xticks(rotation=0)
+plt.xlabel("Количество ответов на вопросы")
+plt.ylabel("Процент правильных ответов")
+z = np.polyfit(x, y, 1)
+p = np.poly1d(z)
+plt.plot(x,p(x),"r--")
+
+plt.show()
+
+
+print('Часть пропущенных значений для каждого столбца')
+print(train_data.isnull().sum() / len(train_data))
+
+
+pq = train_data[train_data.answered_correctly != -1].groupby(['prior_question_had_explanation'], dropna=False).agg({'answered_correctly': ['mean', 'count']})
+#pq.index = pq.index.astype(str)
+print(pq.iloc[:,1])
+pq = pq.iloc[:,0]
+
+fig = plt.figure(figsize=(12,4))
+pq.plot.barh()
+# for i, v in zip(pq.index, pq.values):
+#     plt.text(v, i, round(v,2), color='white', fontweight='bold', fontsize=14, ha='right', va='center')
+plt.title("Answered_correctly по сравнению с Prior Question had explanation")
+plt.xlabel("Percent answered correctly")
+plt.ylabel("Prior question had explanation")
+plt.xticks(rotation=0)
+plt.show()
+
+pq = train_data[train_data.answered_correctly != -1]
+pq = pq[['prior_question_elapsed_time', 'answered_correctly']]
+pq = pq.groupby(['answered_correctly']).agg({'answered_correctly': ['count'], 'prior_question_elapsed_time': ['mean']})
+
+pq
+
+
+questions_data.head()
+
+
+questions_data.shape
+
+questions_data['tags'] = questions_data['tags'].astype(str)
+
+tags = [x.split() for x in questions_data[questions_data.tags != "nan"].tags.values]
+tags = [item for elem in tags for item in elem]
+tags = set(tags)
+tags = list(tags)
+print(f'Существуют {len(tags)} различных тэгов')
+
+
+
+questions_data.tags.values
+
+
+fig = plt.figure(figsize=(12,8))
+ax1 = fig.add_subplot(211)
+ax1 = questions_data.groupby("part").count()['question_id'].plot.bar()
+plt.title("Количество секций")
+plt.xlabel("Секция")
+plt.xticks(rotation=0)
+
+part = questions_data.groupby('part').agg({'Wrong': ['sum'], 'Right': ['sum']})
+part['Percent_correct'] = part.Right/(part.Right + part.Wrong)
+part = part.iloc[:,2]
+
+ax2 = fig.add_subplot(212)
+plt.bar(part.index, part.values)
+for i, v in zip(part.index, part.values):
+    plt.text(i, v, round(v,2), color='white', fontweight='bold', fontsize=14, va='top', ha='center')
+
+plt.title("Доля правильных ответов в секции")
+plt.xlabel("Секция")
+plt.xticks(rotation=0)
+plt.tight_layout(pad=2)
+plt.show()
+
+
+
+
+# Вывод: в части 5 гораздо больше id_вопросов, и она также является самой сложной.
+
+
+lectures_data.head()
+
+
+print(f'Существуют {lectures_data.shape[0]} идентификаторов лекций.')
+
+
+lect_type_of = lectures_data.type_of.value_counts()
+
+fig = plt.figure(figsize=(12,6))
+plt.bar(lect_type_of.index, lect_type_of.values)
+for i, v in zip(lect_type_of.index, lect_type_of.values):
+    plt.text(i, v, v, color='black', fontweight='bold', fontsize=14, va='bottom', ha='center')
+plt.title("Типы лекций")
+plt.xlabel("Тип")
+plt.ylabel("Количество")
+plt.xticks(rotation=0)
+plt.show()
+
+
+
+user_lect = train_data.groupby(["user_id", "answered_correctly"]).size().unstack()
+user_lect.columns = ['Lecture', 'Wrong', 'Right']
+user_lect['Lecture'] = user_lect['Lecture'].fillna(0)
+user_lect = user_lect.astype('Int64')
+user_lect['Watches_lecture'] = np.where(user_lect.Lecture > 0, True, False)
+
+watches_l = user_lect.groupby("Watches_lecture").agg({'Wrong': ['sum'], 'Right': ['sum']})
+print(user_lect.Watches_lecture.value_counts())
+
+watches_l['Percent_correct'] = watches_l.Right/(watches_l.Right + watches_l.Wrong)
+
+watches_l = watches_l.iloc[:,2]
+
+fig = plt.figure(figsize=(12,4))
+watches_l.plot.barh()
+for i, v in zip(watches_l.index, watches_l.values):
+    plt.text(v, i, round(v,2), color='white', fontweight='bold', fontsize=14, ha='right', va='center')
+
+plt.title("Пользователь смотрит лекции, правильность ответов")
+plt.xlabel("Правильность ответов")
+plt.ylabel("Пользователь смотрел хотя бы 1 лекцию")
+plt.xticks(rotation=0)
+plt.show()
+
+
+
+batch_lect = train_data.groupby(["task_container_id", "answered_correctly"]).size().unstack()
+batch_lect.columns = ['Lecture', 'Wrong', 'Right']
+batch_lect['Lecture'] = batch_lect['Lecture'].fillna(0)
+batch_lect = batch_lect.astype('Int64')
+batch_lect['Percent_correct'] = batch_lect.Right/(batch_lect.Wrong + batch_lect.Right)
+batch_lect['Percent_lecture'] = batch_lect.Lecture/(batch_lect.Lecture + batch_lect.Wrong + batch_lect.Right)
+batch_lect = batch_lect.sort_values(by = "Percent_lecture", ascending = False)
+
+print(f'Наибольшее количество лекций, просмотренных в пределах одного task_container_id, равно {batch_lect.Lecture.max()}.')
+
+
+
+batch_lect.head()
+
+
+batch_lect['Has_lecture'] = np.where(batch_lect.Lecture == 0, False, True)
+print(f'У нас есть {batch_lect[batch_lect.Has_lecture == True].shape[0]} task_container_ids c лекциями и {batch_lect[batch_lect.Has_lecture == False].shape[0]} task_container_ids без лекций.')
+
+
+
+batch_lect = batch_lect[['Wrong', 'Right', 'Has_lecture']]
+batch_lect = batch_lect.groupby("Has_lecture").sum()
+batch_lect['Percent_correct'] = batch_lect.Right/(batch_lect.Wrong + batch_lect.Right)
+batch_lect = batch_lect[['Percent_correct']]
+batch_lect
+
+      
+      
